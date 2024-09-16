@@ -1,0 +1,809 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Concerns Dashboard</title>
+    <!-- Include jsMind CSS -->
+    <link type="text/css" rel="stylesheet" href="https://cdn.jsdelivr.net/npm/jsmind@0.4.6/style/jsmind.css" />
+    <!-- Include D3.js -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/d3/7.8.5/d3.min.js"></script>
+    <!-- Include jsMind JS -->
+    <script type="text/javascript" src="https://cdn.jsdelivr.net/npm/jsmind@0.4.6/js/jsmind.js"></script>
+    <!-- Include marked.js for Markdown parsing -->
+    <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+    <style>
+        body { font-family: Arial, sans-serif; margin: 0; padding: 0; display: flex; height: 100vh; }
+        .left-panel { width: 250px; padding: 20px; background-color: #f0f0f0; overflow-y: auto; }
+        .main-panel { flex-grow: 1; padding: 20px; overflow: auto; }
+        .node { cursor: pointer; }
+        .node circle { stroke-width: 3px; }
+        .node text { font: 12px sans-serif; }
+        .link { fill: none; stroke: #ccc; stroke-width: 2px; }
+        /* Styles for the checkbox container */
+        #tagContainer {
+            max-height: 700px;
+            overflow-y: auto;
+            margin-bottom: 10px;
+        }
+        #tagContainer label {
+            display: block;
+            margin-bottom: 5px;
+        }
+        .context-menu { position: absolute; background-color: #f9f9f9; border: 1px solid #ccc; padding: 5px 0; z-index: 1000; }
+        .context-menu div { padding: 5px 20px; cursor: pointer; }
+        .context-menu div:hover { background-color: #f0f0f0; }
+
+        /* Modal Styles */
+        .modal-overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background-color: rgba(0, 0, 0, 0.5);
+            z-index: 2000;
+        }
+
+        .modal-content {
+            position: relative;
+            background-color: #fff;
+            margin: 2% auto;
+            padding: 20px;
+            width: 90%;
+            max-width: 1200px;
+            overflow-y: auto; /* Ensure content is scrollable */
+            max-height: 90%;
+            border-radius: 5px;
+        }
+
+        .modal-close {
+            position: absolute;
+            top: 10px;
+            right: 20px;
+            font-size: 30px;
+            cursor: pointer;
+        }
+
+        /* Content Styling */
+        .modal-content h1, .modal-content h2, .modal-content h3, .modal-content h4 {
+            margin-top: 20px;
+        }
+
+        .modal-content ul {
+            margin-left: 20px;
+        }
+
+        .modal-content p {
+            margin-bottom: 15px;
+        }
+    </style>
+</head>
+<body>
+    <div class="left-panel">
+        <h3>Mission Areas</h3>
+        <div id="tagContainer">
+            <!-- Checkboxes will be populated here -->
+        </div>
+    </div>
+
+    <div id="mainPanel" class="main-panel"></div>
+
+    <div id="contextMenu" class="context-menu" style="display: none;"></div>
+
+    <!-- Modal Overlay -->
+    <div id="modalOverlay" class="modal-overlay" style="display: none;">
+        <div id="modalContent" class="modal-content">
+            <span id="modalClose" class="modal-close">&times;</span>
+            <div id="modalBody"></div>
+        </div>
+    </div>
+
+    <script>
+        // Set up the SVG canvas dimensions and margins
+        const margin = { top: 20, right: 150, bottom: 20, left: 150 };
+        const width = 1200 - margin.left - margin.right;
+        const height = 600 - margin.top - margin.bottom;
+
+        const svg = d3.select("#mainPanel").append("svg")
+            .attr("width", width + margin.left + margin.right)
+            .attr("height", height + margin.top + margin.bottom)
+            .append("g")
+            .attr("transform", `translate(${margin.left},${margin.top})`);
+
+        // Define the root data structure with the default concerns
+        let root = {
+            name: "Mission Areas",
+            children: [
+                {
+                    name: "Social Subjects",
+                    children: [
+                        { name: "Dismantle DEI Act", isDefault: true }
+                    ],
+                    isDefault: true
+                },
+                {
+                    name: "Government Operations",
+                    children: [
+                        {
+                            name: "Legislative Branch Ineffectiveness",
+                            children: [
+                                { name: "Joint Legislation Development Template", isDefault: true }
+                            ],
+                            isDefault: true
+                        },
+                        { name: "Executive Branch Ops Synergy", isDefault: true },
+                        { name: "Concern Building Block", isDefault: true }
+                    ],
+                    isDefault: true
+                },
+                {
+                    name: "Civil Rights",
+                    children: [
+                        { name: "Dismantle DEI Act", isDefault: true }
+                    ],
+                    isDefault: true
+                }
+            ]
+        };
+
+        // List of mission areas for the checkboxes
+        const missionAreas = [
+            "Affordable Housing", "Air Traffic Control", "Anti-Terrorism", "Armed Forces",
+            "Bureau of Land Management", "Census", "Civil Rights", "Community Planning",
+            "Conflict Resolution", "Consular Services", "Correctional Facilities",
+            "Critical Infrastructure Protection", "Currency and Coinage", "Cybersecurity",
+            "Debt Management", "Defense Budget", "Diplomatic Relations",
+            "Disability Compensation", "Disaster Response", "Disease Control",
+            "Economic Development", "Economic Policy", "Education Research",
+            "Educational Standards", "Electric Grid", "Employment Assistance",
+            "Employment Statistics", "Energy Efficiency", "Energy Policy", "Energy Research",
+            "Fair Housing", "Federal Prosecutions", "Federal Student Aid",
+            "Financial Regulation", "Financial Stability", "Foreign Affairs", "Foreign Aid",
+            "Freight and Logistics", "Global Security", "Government Operations",
+            "Healthcare for Veterans", "Healthcare Services", "Higher Education",
+            "Highway Safety", "Homeland Defense", "Homeownership Programs",
+            "Immigration Services", "Indian Affairs", "Intelligence", "International Treaties",
+            "Labor Standards", "Law Enforcement", "Legal Aid", "Maritime Safety",
+            "Medical Research", "Medicare and Medicaid", "Memorial Affairs",
+            "Military Operations", "National Parks", "National Security",
+            "Native American Affairs", "Natural Resources", "Neighborhood Revitalization",
+            "Nuclear Energy", "Occupational Training", "Oil and Gas", "Patent and Trademark",
+            "Pensions", "Public Health", "Public Housing", "Public Lands", "Public Transit",
+            "Renewable Energy", "Revenue Collection", "School Improvement", "Social Subjects",
+            "Special Education", "Statistical Data", "Substance Abuse", "Taxation",
+            "Teacher Training", "Technology and Innovation", "Terrorism Prevention",
+            "Transportation Infrastructure", "Unemployment Benefits", "Urban Development",
+            "Veteran Affairs", "Veteran Benefits", "Veteran Education", "Wages and Hours",
+            "Weather and Climate", "Welfare Programs", "Wildlife Conservation",
+            "Workers' Compensation", "Workplace Safety"
+        ];
+
+        const defaultMissionAreas = ["Civil Rights", "Government Operations", "Social Subjects"];
+
+        const tagContainer = document.getElementById('tagContainer');
+
+        // Populate the checkbox list with mission areas
+        missionAreas.forEach(tag => {
+            const label = document.createElement('label');
+            const checkbox = document.createElement('input');
+            checkbox.type = 'checkbox';
+            checkbox.value = tag;
+            if (defaultMissionAreas.includes(tag)) {
+                checkbox.checked = true;
+            }
+            checkbox.addEventListener('change', updateRootNodes);
+            label.appendChild(checkbox);
+            label.appendChild(document.createTextNode(' ' + tag));
+            tagContainer.appendChild(label);
+        });
+
+        // Update the root nodes based on selected mission areas
+        function updateRootNodes() {
+            const selectedMissionAreas = Array.from(tagContainer.querySelectorAll('input[type="checkbox"]:checked')).map(checkbox => checkbox.value);
+
+            // Keep default nodes
+            const defaultNodes = root.children.filter(node => node.isDefault);
+
+            // Add selected missionAreas as root nodes, avoiding duplicates
+            const selectedNodes = selectedMissionAreas.map(tag => {
+                // Check if the node already exists in root.children
+                let existingNode = root.children.find(node => node.name === tag);
+                if (!existingNode) {
+                    existingNode = { name: tag, children: [] };
+                }
+                return existingNode;
+            });
+
+            // Combine default and selected nodes, ensuring default nodes are included only once
+            root.children = [...new Map([...defaultNodes, ...selectedNodes].map(item => [item.name, item])).values()];
+
+            update(root);
+        }
+
+        const tree = d3.tree().size([height, width]);
+
+        function update(source) {
+            const treeData = tree(d3.hierarchy(root));
+            const nodes = treeData.descendants();
+            const links = treeData.links();
+
+            let node = svg.selectAll(".node")
+                .data(nodes, d => d.data.name);
+
+            const nodeEnter = node.enter().append("g")
+                .attr("class", "node")
+                .attr("transform", d => `translate(${source.y0 || 0},${source.x0 || 0})`);
+
+            // Append circle for each node
+            nodeEnter.append("circle")
+                .attr("r", d => d.depth === 1 ? 20 : 10)
+                .style("fill", d => d.depth === 1 ? "#8c564b" : (d.children || d._children ? "#e377c2" : "#7f7f7f"))
+                .style("stroke", d => d.depth === 1 ? "#5b3a32" : "#2ca02c")
+                .on("click", function(event, d) {
+                    // Prevent click event from propagating to parent g
+                    event.stopPropagation();
+                    if (d.depth > 0) {
+                        toggleNode(event, d);
+                    }
+                });
+
+            // Append text for each node
+            nodeEnter.append("text")
+                .attr("dy", d => {
+                    if (d.depth === 1) return "-1.5em"; // Root-level nodes
+                    else if (!d.children && !d._children) return "0.35em"; // Leaf nodes
+                    else return "0.35em"; // Other nodes
+                })
+                .attr("x", 0)
+                .attr("text-anchor", "middle")
+                .text(d => d.data.name)
+                .style("fill-opacity", 1)
+                .on("click", function(event, d) {
+                    // Prevent click event from propagating to parent g
+                    event.stopPropagation();
+                    if (d.depth > 0) {
+                        showContextMenu(event, d);
+                    }
+                });
+
+            const nodeUpdate = nodeEnter.merge(node);
+
+            nodeUpdate.transition()
+                .duration(750)
+                .attr("transform", d => `translate(${d.y},${d.x})`);
+
+            nodeUpdate.select("circle")
+                .attr("r", d => d.depth === 1 ? 20 : 10)
+                .style("fill", d => d.depth === 1 ? "#8c564b" : (d.children || d._children ? "#e377c2" : "#7f7f7f"));
+
+            const nodeExit = node.exit().transition()
+                .duration(750)
+                .attr("transform", d => `translate(${source.y},${source.x})`)
+                .remove();
+
+            nodeExit.select("circle")
+                .attr("r", 1e-6);
+
+            nodeExit.select("text")
+                .style("fill-opacity", 1e-6);
+
+            let link = svg.selectAll(".link")
+                .data(links, d => d.target.data.name);
+
+            const linkEnter = link.enter().insert("path", "g")
+                .attr("class", "link")
+                .attr("d", d3.linkHorizontal()
+                    .x(d => source.y0 || 0)
+                    .y(d => source.x0 || 0));
+
+            const linkUpdate = linkEnter.merge(link);
+
+            linkUpdate.transition()
+                .duration(750)
+                .attr("d", d3.linkHorizontal()
+                    .x(d => d.y)
+                    .y(d => d.x));
+
+            link.exit().transition()
+                .duration(750)
+                .attr("d", d3.linkHorizontal()
+                    .x(d => source.y)
+                    .y(d => source.x))
+                .remove();
+
+            nodes.forEach(d => {
+                d.x0 = d.x;
+                d.y0 = d.y;
+            });
+        }
+
+        function toggleNode(event, d) {
+            if (d.children) {
+                d._children = d.children;
+                d.children = null;
+            } else {
+                d.children = d._children;
+                d._children = null;
+            }
+            update(d);
+        }
+
+        // Content object with updated Markdown content
+        const concernContent = {
+            'Concern Building Block': `
+# Concern Building Block
+## 1. Definition (What)
+### 1.1. State concern
+### 1.2. Concern concept description
+### 1.3. Concern Rationale ("Why"/"So-What?")
+### 1.4. Objectives (To-Be)
+### 1.5. Objectives Roadmap Summation
+## 2. Initial-State Attributes (As-Is)
+### 2.1. Initial state (As-Is) description
+### 2.2. As-Is elements breakdown
+### 2.3. As-Is metrics: ($,%,#,time, state-description)
+## 3. Objective-State Attributes (To-Be)
+### 3.1. Desired outcome/solution
+### 3.2. To-Be Metrics ($,%,#,time,state-description)
+## 4. Roadmap (How-To)
+### 4.1. Responsibility distribution
+### 4.2. Ordered actions
+## 5. Synopsis
+### 5.1. Key points Summary
+#### 5.1.1. Project summation
+#### 5.1.2. Risks & Risk Mitigation
+##### 5.1.2.1. Costs
+##### 5.1.2.2. Resource Requirements
+### 5.2. Metadata tags
+## 6. Assess/Validate
+### 6.1. Latest-state defined attributes
+### 6.2. Latest-State progression
+            `,
+            'Executive Branch Ops Synergy': `
+# Executive Branch Ops Synergy
+## 1. Definition
+### 1.1 Enable ops situation awareness (SA) synergy by using activity info standards and availability
+### 1.2 Activity info standardization enables dashboard visibility and SA of:
+#### 1.2.1 Government activity details
+#### 1.2.2 Wide spectrum SA at all releasable levels
+#### 1.2.3 Collaboration and action needs/opportunities
+### 1.3 Beta-test this ops structure to test potential effectiveness
+#### 1.3.1 2-3 SMEs could create prototype concern-info standard and prototype-dashboard in hour(s)
+## 2. Initial-State (As-Is)
+### 2.1 Personnel at all levels have limited-sphere government activity awareness
+### 2.2 Lacking outside activity awareness hiding issues and opportunities
+### 2.3 Lacking government transparency
+### 2.4 Unorganized Legislative branch collaboration and unity of efforts
+## 3. Objective-State (To-Be)
+### 3.1 Enable government SA at all releasable levels
+#### 3.1.1 Enable identification of conflicting or collaborative activities
+### 3.2 Providing government transparency
+### 3.3 Enabling Legislative branch activities collaboration using dashboard elements
+#### 3.3.1 Propose legislation via documented concerns
+#### 3.3.2 Develop legislation with HoR and Senate collaboratively
+### 3.4 Maintained governance element data
+## 4. Roadmap (How-To)
+### 4.1 Conduct operations beta-test
+#### 4.1.1 Develop experimental governance dashboard
+#### 4.1.2 Assign related offices to operate using concern-based methods
+#### 4.1.3 Adapt operations procedures as needed
+## 5. Synopsis
+### 5.1 Current government ops entities lack operations synergy due to self-contained operations activities and data exchange
+### 5.2 Open ops data is available using concerns-based ops methodology
+### 5.3 Conduct concerns-based ops beta test
+## 6. Assessment
+### 6.1 Leadership assess ops utility
+            `,
+            'Legislative Branch Ineffectiveness': `
+# Legislative Branch Ineffectiveness
+## 1. Definition (What)
+### 1.1. Definition
+#### Correct poor Legislative branch collaboration
+### 1.2. Thesis
+#### Decoupled HoR/Senate bills development disables effective & efficient governance operations, increases economic & social conflict
+### 1.3. Rationale
+#### Collaborative bills development would avoid impassible bills from voting; wasted time/manpower
+### 1.4. Objectives ("To-Be")
+#### Implement synergistic bills development procedures
+### 1.5. Roadmap ("How-To")
+#### Use "Concern" elements and joint staff for bills development
+## 2. Initial-state Attributes (As-Is)
+### 2.1. Procedures
+#### Require 'backward-collaboration' from decoupled HoR/Senate bills development & passage
+### 2.2. Leadership
+#### Lacking prioritized and productive leadership
+#### Ideology & social activism primary bills drivers
+### 2.3. Bill transparency
+#### Bill content & derivation unknown/misinformed to public
+### 2.4. Information distribution
+#### Inaccurate, deceiving, incomplete info distributed
+#### Sources: Journalism, activist, entertainer, educator, showmanship-politician
+### 2.5. Bill passage rate
+#### Small percentage proposed bills passed
+### 2.6. As-Is metrics examples
+#### 2.6.1. Bill passage rate
+##### Thousands proposed bills, 27 passed in 2023
+#### 2.6.2. Budget bill passage
+##### Last on-time budget bill passed 1996, 4 passed in 40 years
+#### 2.6.3. Legislation focus
+##### Social activism (e.g., sexual preference, CRT, DEI, abortion, student loan forgiveness) vice government ops
+#### 2.6.4. Branch visibility
+##### Political video hearings & distribution primary Branch visibility
+## 3. Objective Attributes (To-Be)
+### 3.1. Bill passage efficiency
+#### 3.1.1. Collaborative development
+##### Use joint stakeholder (HoR, Senate, Executive-liaison) bills development
+#### 3.1.2. Development template
+##### Use a "Concern" template as a 'blood cell' to bills development
+### 3.2. Public awareness
+#### 3.2.1. Concerns Dashboard
+##### "Concerns Dashboard" available: Display mind map showing bills concerns
+#### 3.2.2. Legislation activity visibility
+##### View legislation activity: public awareness, outside innovation, offset misinformation
+#### 3.2.3. Assessment Metrics
+##### 3.2.3.1. Bill passage rate
+###### <20% proposed bills passed>
+##### 3.2.3.2. Bill enforceability
+###### <40% are enforceable>
+##### 3.2.3.3. Budget bill passage
+###### <budget bill(s) passed>
+## 4. Actions Roadmap (How-To)
+### 4.1. Concerns Dashboard
+#### Develop Concerns Dashboard
+### 4.2. Joint bills-development
+#### 4.2.1. Identify Concerns "Centers of Gravity"
+##### Many interrelations, time sensitive, "High Value Targets"
+#### 4.2.2. Concern attributes
+##### Complete Concern attributes
+#### 4.2.3. Bill drafting
+##### Draft scoped bills w/ scoped Concerns-set
+#### 4.2.4. Executive Branch collaboration
+##### Collaborate with Executive Branch stakeholders
+#### 4.2.5. Bill passage process
+##### Pass only collaboratively developed bills for HoR & Senate vote
+## 5. Synopsis
+### 5.1. Key points Summary
+#### 5.1.1. Initial state
+##### Poor current Legislative branch duties synergy
+#### 5.1.2. Joint Legislation staff
+##### Use Joint Legislation staff for collaborative bills development
+#### 5.1.3. Development template
+##### Use "Concern" as bills development template
+#### 5.1.4. Transparency
+##### Use "Concerns Dashboard" for bills development transparency
+## 6. Assess/Validate
+### 6.1. Initial-state To-Be attributes
+#### Define Initial-state To-Be attributes: No change
+### 6.2. To-Be Assessment Metrics
+#### Assess To-Be Assessment Metrics: No change
+            `,
+            'Dismantle DEI Act': `
+# Dismantle DEI Act
+## 1. "Concern" Definition
+### 1.1 Destructive ideology breeding hatred and division
+### 1.2 Eliminate federal DEI programs and funding
+### 1.3 Vision
+#### 1.3.1 Eliminate DEI to promote merit-based practices
+#### 1.3.2 Reduce perceived social division
+### 1.4 Rationale
+#### 1.4.1 DEI perpetuates discrimination
+#### 1.4.2 DEI destroys competence
+#### 1.4.3 Taxpayers shouldn't fund "woke" agenda
+## 2. As-Is Attributes
+### 2.1 Widespread DEI programs in federal agencies
+### 2.2 Perceived national division
+### 2.3 Large federal contracts potentially implementing DEI
+## 3. To-Be Attributes
+### 3.1 Eliminate federal DEI programs
+### 3.2 Strip DEI funding
+### 3.3 Remove DEI from federal bureaucracy
+### 3.4 Restore meritocracy and equal treatment
+## 4. Roadmap
+### 4.1 Rescind executive orders
+### 4.2 Terminate Chief Diversity Officers
+### 4.3 Close DEI offices
+### 4.4 End DEI trainings
+### 4.5 Outlaw mandatory DEI pledges
+### 4.6 Revoke DEI funding
+### 4.7 Prevent DEI in federal contracts
+### 4.8 Prevent DEI in federal grants
+### 4.9 Prevent DEI in educational accreditation
+## 5. Synopsis
+### 5.1 Eliminate federal DEI programs and funding
+### 5.2 Reduce division and discrimination
+### 5.3 Promote merit-based practices
+## 6. Assessment
+### 6.1 No clear metrics specified
+### 6.2 Potential future assessments
+#### 6.2.1 Government efficiency
+#### 6.2.2 Employee satisfaction
+#### 6.2.3 Societal unity indicators
+            `,
+            'Joint Legislation Development Template': `
+# Joint Legislation Development Template
+## Scope Definition
+### Concern
+### Objectives
+## Initial State Analysis
+### Federal Agencies
+### Contractors
+### Grant Recipients
+## Gap Identification
+## Legislative Structure
+### Bill Number and Title
+### Enacting Clause
+### Long Title
+### Definitions
+### Substantive Provisions
+### Effective Date
+### Severability Clause
+### Authorization of Appropriations
+### Amendments to Existing Law
+### Reporting Requirements
+### Sunset Provision
+### Short Title
+### Table of Contents
+### Findings and Purpose
+### Enforcement Provisions
+### Savings Clause
+### Rules of Construction
+### Conforming Amendments
+### Penalties
+### Jurisdiction
+## Monitoring & Evaluation
+### Metrics
+### Reporting Requirements
+## Impact Assessment
+### Costs
+### Benefits
+### Potential Challenges
+## Implementation Strategy
+### Timeline
+### Agency Guidance
+## Legislative Actions
+### Repeals
+### New Prohibitions
+### Enforcement Mechanisms
+            `,
+        };
+
+        function showContextMenu(event, d) {
+            event.preventDefault();
+            const contextMenu = d3.select("#contextMenu");
+            contextMenu.html("");
+
+            if (d.depth === 1) {
+                contextMenu.append("div").text("Add a concern").on("click", () => {
+                    addConcern(d);
+                    contextMenu.style("display", "none");
+                });
+                contextMenu.append("div").text("Remove from display").on("click", () => {
+                    removeFromDisplay(d);
+                    contextMenu.style("display", "none");
+                });
+                contextMenu.append("div").text("Display related data").on("click", () => {
+                    displayRelatedData(d);
+                    contextMenu.style("display", "none");
+                });
+            } else {
+                contextMenu.append("div").text("Add a sub-concern").on("click", () => {
+                    addSubConcern(d);
+                    contextMenu.style("display", "none");
+                });
+                contextMenu.append("div").text("Link to another mission area").on("click", () => {
+                    linkToAnotherTag(d);
+                    contextMenu.style("display", "none");
+                });
+                contextMenu.append("div").text("Display text outline").on("click", () => {
+                    displayTextOutline(d);
+                    contextMenu.style("display", "none");
+                });
+                contextMenu.append("div").text("Display mind map").on("click", () => {
+                    displayMindMap(d);
+                    contextMenu.style("display", "none");
+                });
+                contextMenu.append("div").text("Remove from display").on("click", () => {
+                    removeFromDisplay(d);
+                    contextMenu.style("display", "none");
+                });
+            }
+
+            contextMenu.style("left", (event.pageX + 5) + "px")
+                       .style("top", (event.pageY + 5) + "px")
+                       .style("display", "block");
+
+            d3.select("body").on("click", () => contextMenu.style("display", "none"));
+        }
+
+        function addConcern(d) {
+            const name = prompt("Enter concern name:");
+            if (name) {
+                if (!d.data.children) d.data.children = [];
+                d.data.children.push({ name: name });
+                update(d);
+            }
+        }
+
+        function addSubConcern(d) {
+            const name = prompt("Enter sub-concern name:");
+            if (name) {
+                if (!d.data.children) d.data.children = [];
+                d.data.children.push({ name: name });
+                update(d);
+            }
+        }
+
+        function removeFromDisplay(d) {
+            if (d.depth === 1 && !d.data.isDefault) {
+                // Uncheck the corresponding checkbox
+                const checkbox = tagContainer.querySelector(`input[type="checkbox"][value="${d.data.name}"]`);
+                if (checkbox) {
+                    checkbox.checked = false;
+                }
+                updateRootNodes();
+            } else if (d.depth > 1 && !d.data.isDefault) {
+                const parent = d.parent;
+                parent.data.children = parent.data.children.filter(child => child.name !== d.data.name);
+                if (parent.data.children.length === 0) {
+                    delete parent.data.children;
+                }
+                update(root);
+            }
+        }
+
+        function displayRelatedData(d) {
+            alert(`Displaying related data for ${d.data.name}`);
+        }
+
+        function linkToAnotherTag(d) {
+            const tagName = prompt("Enter mission area name to link to:");
+            if (tagName) {
+                const targetTag = root.children.find(child => child.name === tagName);
+                if (targetTag) {
+                    if (!targetTag.children) targetTag.children = [];
+                    targetTag.children.push({ ...d.data });
+                    update(root);
+                } else {
+                    alert("Mission area not found");
+                }
+            }
+        }
+
+        // Function to display the text outline
+        function displayTextOutline(d) {
+            const concernName = d.data.name;
+            const markdownContent = concernContent[concernName];
+
+            if (markdownContent) {
+                // Parse the Markdown content to HTML
+                const htmlContent = marked.parse(markdownContent);
+
+                // Display the content in the modal
+                const modalOverlay = document.getElementById('modalOverlay');
+                const modalBody = document.getElementById('modalBody');
+                modalBody.innerHTML = htmlContent;
+                modalOverlay.style.display = 'block';
+
+                // Close modal when 'x' is clicked
+                document.getElementById('modalClose').onclick = function() {
+                    modalOverlay.style.display = 'none';
+                };
+
+                // Close modal when clicking outside the modal content
+                window.onclick = function(event) {
+                    if (event.target == modalOverlay) {
+                        modalOverlay.style.display = 'none';
+                    }
+                };
+            } else {
+                alert(`No content available for ${concernName}`);
+            }
+        }
+
+        // Function to parse Markdown content into a tree structure
+        function parseMarkdownToTree(markdownContent) {
+            const tokens = marked.lexer(markdownContent);
+            const root = { id: 'root', topic: '', children: [] };
+            const stack = [root];
+
+            tokens.forEach(token => {
+                if (token.type === 'heading') {
+                    const node = {
+                        id: token.text.replace(/\s+/g, '_'),
+                        topic: token.text,
+                        expanded: true,
+                        children: []
+                    };
+                    const level = token.depth;
+
+                    // Ensure the stack has a parent for this level
+                    while (stack.length > level) {
+                        stack.pop();
+                    }
+
+                    const parent = stack[stack.length - 1];
+                    parent.children.push(node);
+                    stack.push(node);
+                }
+            });
+
+            return root.children.length > 0 ? root.children[0] : null;
+        }
+
+        // Function to display the mind map
+        function displayMindMap(d) {
+            const concernName = d.data.name;
+            const markdownContent = concernContent[concernName];
+
+            if (markdownContent) {
+                // Parse the Markdown content to a tree structure
+                const mindRoot = parseMarkdownToTree(markdownContent);
+
+                if (mindRoot) {
+                    // Build mind map data
+                    const mindData = {
+                        meta: {
+                            name: concernName,
+                            author: 'Your Name',
+                            version: '1.0'
+                        },
+                        format: 'node_tree',
+                        data: mindRoot
+                    };
+
+                    // Display the mind map in the modal
+                    const modalOverlay = document.getElementById('modalOverlay');
+                    const modalBody = document.getElementById('modalBody');
+                    modalBody.innerHTML = `
+                        <div id="mindmap-controls" style="text-align: center; margin-bottom: 10px;">
+                            <button id="zoomInBtn">Zoom In</button>
+                            <button id="zoomOutBtn">Zoom Out</button>
+                            <button id="resetZoomBtn">Reset Zoom</button>
+                        </div>
+                        <div id="jsmind_container" style="width:100%; height:600px; overflow: auto;"></div>
+                    `;
+                    modalOverlay.style.display = 'block';
+
+                    const options = {
+                        container: 'jsmind_container',
+                        editable: false,
+                        theme: 'primary'
+                    };
+                    const jm = new jsMind(options);
+                    jm.show(mindData);
+
+                    // Zoom control buttons
+                    document.getElementById('zoomInBtn').onclick = function() {
+                        jm.view.zoomIn();
+                    };
+                    document.getElementById('zoomOutBtn').onclick = function() {
+                        jm.view.zoomOut();
+                    };
+                    document.getElementById('resetZoomBtn').onclick = function() {
+                        jm.view.setZoom(1);
+                    };
+
+                    // Close modal when 'x' is clicked
+                    document.getElementById('modalClose').onclick = function() {
+                        modalOverlay.style.display = 'none';
+                    };
+
+                    // Close modal when clicking outside the modal content
+                    window.onclick = function(event) {
+                        if (event.target == modalOverlay) {
+                            modalOverlay.style.display = 'none';
+                        }
+                    };
+                } else {
+                    alert(`No mind map data available for ${d.data.name}`);
+                }
+            } else {
+                alert(`No content available for ${concernName}`);
+            }
+        }
+
+        // Initial render
+        updateRootNodes();
+    </script>
+</body>
+</html>
