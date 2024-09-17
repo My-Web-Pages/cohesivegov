@@ -4,13 +4,13 @@
     <meta charset="UTF-8">
     <title>Concerns Dashboard</title>
     <!-- Include jsMind CSS -->
-    <link type="text/css" rel="stylesheet" href="https://cdn.jsdelivr.net/npm/jsmind@0.4.6/style/jsmind.css" />
+    <link rel="stylesheet" type="text/css" href="https://cdn.jsdelivr.net/npm/jsmind@0.4.6/style/jsmind.css" />
     <!-- Include D3.js -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/d3/7.8.5/d3.min.js"></script>
-    <!-- Include jsMind JS -->
-    <script type="text/javascript" src="https://cdn.jsdelivr.net/npm/jsmind@0.4.6/js/jsmind.js"></script>
     <!-- Include marked.js for Markdown parsing -->
     <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+    <!-- Include jsMind JS -->
+    <script type="text/javascript" src="https://cdn.jsdelivr.net/npm/jsmind@0.4.6/js/jsmind.js"></script>
     <style>
         body { font-family: Arial, sans-serif; margin: 0; padding: 0; display: flex; height: 100vh; }
         .left-panel { width: 250px; padding: 20px; background-color: #f0f0f0; overflow-y: auto; }
@@ -75,6 +75,15 @@
 
         .modal-content p {
             margin-bottom: 15px;
+        }
+
+        /* jsMind Container Styling */
+        #jsmind_container {
+            width: 100%;
+            height: 600px;
+            overflow: auto;
+            border: 1px solid #ccc;
+            background-color: #f4f4f4;
         }
     </style>
 </head>
@@ -567,8 +576,9 @@
             `,
         };
 
+        // Function to show the context menu
         function showContextMenu(event, d) {
-            event.preventDefault();
+            event.preventDefault(); // Prevent default context menu
             const contextMenu = d3.select("#contextMenu");
             contextMenu.html("");
 
@@ -615,6 +625,7 @@
             d3.select("body").on("click", () => contextMenu.style("display", "none"));
         }
 
+        // Function to add a new concern
         function addConcern(d) {
             const name = prompt("Enter concern name:");
             if (name) {
@@ -624,6 +635,7 @@
             }
         }
 
+        // Function to add a sub-concern
         function addSubConcern(d) {
             const name = prompt("Enter sub-concern name:");
             if (name) {
@@ -633,6 +645,7 @@
             }
         }
 
+        // Function to remove a node from display
         function removeFromDisplay(d) {
             if (d.depth === 1 && !d.data.isDefault) {
                 // Uncheck the corresponding checkbox
@@ -651,10 +664,12 @@
             }
         }
 
+        // Function to display related data (placeholder)
         function displayRelatedData(d) {
             alert(`Displaying related data for ${d.data.name}`);
         }
 
+        // Function to link a node to another mission area
         function linkToAnotherTag(d) {
             const tagName = prompt("Enter mission area name to link to:");
             if (tagName) {
@@ -700,34 +715,41 @@
             }
         }
 
-        // Function to parse Markdown content into a tree structure
-        function parseMarkdownToTree(markdownContent) {
+        // Corrected function to parse Markdown content into a tree structure
+        function parseMarkdownToTree(markdownContent, concernName) {
             const tokens = marked.lexer(markdownContent);
-            const root = { id: 'root', topic: '', children: [] };
+            const root = { id: 'root', topic: concernName, children: [] };
             const stack = [root];
 
             tokens.forEach(token => {
                 if (token.type === 'heading') {
                     const node = {
-                        id: token.text.replace(/\s+/g, '_'),
+                        id: 'node_' + Math.random().toString(36).substr(2, 9),
                         topic: token.text,
                         expanded: true,
                         children: []
                     };
                     const level = token.depth;
 
-                    // Ensure the stack has a parent for this level
-                    while (stack.length > level) {
-                        stack.pop();
+                    // Adjusted stack management
+                    if (level > stack.length) {
+                        // New child
+                        const parent = stack[stack.length - 1];
+                        parent.children.push(node);
+                        stack.push(node);
+                    } else {
+                        // Pop to the correct parent level
+                        while (level <= stack.length - 1) {
+                            stack.pop();
+                        }
+                        const parent = stack[stack.length - 1];
+                        parent.children.push(node);
+                        stack.push(node);
                     }
-
-                    const parent = stack[stack.length - 1];
-                    parent.children.push(node);
-                    stack.push(node);
                 }
             });
 
-            return root.children.length > 0 ? root.children[0] : null;
+            return root;
         }
 
         // Function to display the mind map
@@ -737,7 +759,7 @@
 
             if (markdownContent) {
                 // Parse the Markdown content to a tree structure
-                const mindRoot = parseMarkdownToTree(markdownContent);
+                const mindRoot = parseMarkdownToTree(markdownContent, concernName);
 
                 if (mindRoot) {
                     // Build mind map data
@@ -760,7 +782,7 @@
                             <button id="zoomOutBtn">Zoom Out</button>
                             <button id="resetZoomBtn">Reset Zoom</button>
                         </div>
-                        <div id="jsmind_container" style="width:100%; height:600px; overflow: auto;"></div>
+                        <div id="jsmind_container"></div>
                     `;
                     modalOverlay.style.display = 'block';
 
